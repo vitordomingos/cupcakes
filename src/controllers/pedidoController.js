@@ -3,7 +3,15 @@ import * as Produto from '../models/produtoModel';
 import * as Cliente from '../models/clienteModel';
 import { HttpError, handleError, methodNotAllowed } from '../lib/http';
 import { TAXA_ENTREGA, FORMAS_PAGAMENTO, proximoStatus, STATUS } from '../lib/config';
-import { hashSenha, verificarSenha, isAdmin, getClienteId, cookieSessaoCliente } from '../lib/auth';
+import {
+  hashSenha,
+  verificarSenha,
+  isAdmin,
+  getClienteId,
+  cookieSessaoCliente,
+  normalizarTelefone,
+  igualSeguro,
+} from '../lib/auth';
 
 const round2 = (n) => Math.round(n * 100) / 100;
 
@@ -79,7 +87,7 @@ export async function criarPedido(body, idSessao = null) {
     const linhas = [];
     for (const [id, quantidade] of qtd) {
       const p = produtos.find((x) => x.id_produto === id);
-      if (!p) throw new HttpError(404, `Produto ${id} não encontrado.`);
+      if (!p || p.ativo === false) throw new HttpError(404, `Produto ${id} não encontrado.`);
       if (p.quantidade_estoque < quantidade) {
         throw new HttpError(409, `Estoque insuficiente para "${p.nome}" (disponível: ${Math.max(p.quantidade_estoque, 0)}).`);
       }
@@ -122,15 +130,34 @@ export async function pedidosHandler(req, res) {
   }
 }
 
-// GET /api/pedidos/:id (rastreamento) | PATCH /api/pedidos/:id (admin avança status)
+const ERRO_RASTREAMENTO = 'Não foi possível localizar o pedido com os dados informados.';
+
+/**
+ * Rastreamento Seguro: exige id_pedido E telefone cadastrado do cliente.
+ * Retorna erro genérico (404) se o pedido não existir ou se o telefone não bater.
+ */
+export async function rastrearPedido(id_pedido, telefone) {
+  const telInformado = normalizarTelefone(telefone);
+  if (!Number.isInteger(id_pedido) || id_pedido <= 0 || !telInformado) {
+    throw new HttpError(400, 'Informe o número do pedido e o telefone cadastrado.');
+  }
+
+  const pedido = await Pedido.buscarPedido(id_pedido);
+  const telCadastrado = normalizarTelefone(pedido?.telefone);
+  if (!pedido || !telCadastrado || !igualSeguro(telInformado, telCadastrado)) {
+    throw new HttpError(404, ERRO_RASTREAMENTO);
+  }
+  return pedido;
+}
+
+// GET /api/pedidos/:id?telefone=... (rastreamento seguro) | PATCH /api/pedidos/:id (admin avança status)
 export async function pedidoHandler(req, res) {
   try {
     const id = Number(req.query.id);
     if (!Number.isInteger(id) || id <= 0) throw new HttpError(400, 'Número de pedido inválido.');
 
     if (req.method === 'GET') {
-      const pedido = await Pedido.buscarPedido(id);
-      if (!pedido) throw new HttpError(404, 'Pedido não encontrado.');
+      const pedido = await rastrearPedido(id, req.query.telefone);
       return res.status(200).json(pedido);
     }
 

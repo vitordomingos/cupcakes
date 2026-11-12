@@ -103,7 +103,7 @@ export async function repetirPedido(id_pedido, id_cliente) {
 
   for (const [id_produto, { nome, quantidade }] of porProduto) {
     const p = produtos.find((x) => x.id_produto === id_produto);
-    if (!p || p.quantidade_estoque <= 0) {
+    if (!p || p.ativo === false || p.quantidade_estoque <= 0) {
       esgotados.push(p?.nome || nome);
       continue;
     }

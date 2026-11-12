@@ -4,7 +4,7 @@
 import request from 'supertest';
 import { createServer } from './helpers/server';
 import { pedidosHandler, pedidoHandler } from '../src/controllers/pedidoController';
-import { produtosHandler } from '../src/controllers/produtoController';
+import { produtosHandler, produtoAdminHandler } from '../src/controllers/produtoController';
 import * as Pedido from '../src/models/pedidoModel';
 import * as Produto from '../src/models/produtoModel';
 import * as Cliente from '../src/models/clienteModel';
@@ -111,11 +111,103 @@ describe('Admin', () => {
   });
 });
 
-describe('GET /api/pedidos/:id', () => {
-  it('retorna 404 para pedido inexistente', async () => {
-    Pedido.buscarPedido.mockResolvedValue(null);
-    const res = await request(createServer(pedidoHandler, { id: '99' })).get('/');
+describe('GET /api/pedidos/:id (Rastreamento Seguro)', () => {
+  const MSG_GENERICA = 'Não foi possível localizar o pedido com os dados informados.';
+
+  it('bloqueia consulta sem informar o telefone (400)', async () => {
+    const res = await request(createServer(pedidoHandler, { id: '1' })).get('/');
+    expect(res.status).toBe(400);
+    expect(Pedido.buscarPedido).not.toHaveBeenCalled();
+  });
+
+  it('libera acesso quando id_pedido e telefone do cliente conferem', async () => {
+    Pedido.buscarPedido.mockResolvedValue({
+      id_pedido: 1,
+      status: 'Em Preparo',
+      telefone: '(11) 98765-4321',
+      itens: [],
+    });
+    const res = await request(createServer(pedidoHandler, { id: '1' })).get('/?telefone=11987654321');
+    expect(res.status).toBe(200);
+    expect(res.body.id_pedido).toBe(1);
+    expect(res.body.status).toBe('Em Preparo');
+  });
+
+  it('bloqueia acesso e retorna erro genérico quando o telefone não bate', async () => {
+    Pedido.buscarPedido.mockResolvedValue({
+      id_pedido: 1,
+      status: 'Em Preparo',
+      telefone: '(11) 98765-4321',
+      itens: [],
+    });
+    const res = await request(createServer(pedidoHandler, { id: '1' })).get('/?telefone=11000000000');
     expect(res.status).toBe(404);
+    expect(res.body).toEqual({ erro: MSG_GENERICA });
+  });
+
+  it('retorna o mesmo 404 genérico para pedido inexistente', async () => {
+    Pedido.buscarPedido.mockResolvedValue(null);
+    const res = await request(createServer(pedidoHandler, { id: '99' })).get('/?telefone=11987654321');
+    expect(res.status).toBe(404);
+    expect(res.body).toEqual({ erro: MSG_GENERICA });
   });
 });
+
+describe('Gestão de Produtos (Admin CRUD + Soft Delete)', () => {
+  it('POST /api/produtos adiciona novo sabor (apenas admin)', async () => {
+    Produto.criarProduto.mockResolvedValue({
+      id_produto: 7,
+      nome: 'Baunilha',
+      descricao: 'Clássico',
+      preco: 11.5,
+      quantidade_estoque: 12,
+      ativo: true,
+    });
+    const semLogin = await request(createServer(produtosHandler))
+      .post('/')
+      .send({ nome: 'Baunilha', preco: 11.5, quantidade_estoque: 12 });
+    expect(semLogin.status).toBe(401);
+
+    const res = await request(createServer(produtosHandler))
+      .post('/')
+      .set('Cookie', adminCookie())
+      .send({ nome: 'Baunilha', descricao: 'Clássico', preco: 11.5, quantidade_estoque: 12 });
+    expect(res.status).toBe(201);
+    expect(res.body.ativo).toBe(true);
+    expect(Produto.criarProduto).toHaveBeenCalledWith({
+      nome: 'Baunilha',
+      descricao: 'Clássico',
+      preco: 11.5,
+      quantidade_estoque: 12,
+    });
+  });
+
+  it('PATCH /api/produtos/:id atualiza quantidade_estoque', async () => {
+    Produto.atualizarEstoque.mockResolvedValue({ id_produto: 1, nome: 'Red Velvet', quantidade_estoque: 25, ativo: true });
+    const res = await request(createServer(produtoAdminHandler, { id: '1' }))
+      .patch('/')
+      .set('Cookie', adminCookie())
+      .send({ quantidade_estoque: 25 });
+    expect(res.status).toBe(200);
+    expect(Produto.atualizarEstoque).toHaveBeenCalledWith(1, 25);
+    expect(res.body.quantidade_estoque).toBe(25);
+  });
+
+  it('PATCH /api/produtos/:id desativa sabor via Soft Delete (ativo = false) e proíbe DELETE', async () => {
+    Produto.definirAtivo.mockResolvedValue({ id_produto: 1, nome: 'Red Velvet', ativo: false });
+    const patchRes = await request(createServer(produtoAdminHandler, { id: '1' }))
+      .patch('/')
+      .set('Cookie', adminCookie())
+      .send({ ativo: false });
+    expect(patchRes.status).toBe(200);
+    expect(Produto.definirAtivo).toHaveBeenCalledWith(1, false);
+    expect(patchRes.body.ativo).toBe(false);
+
+    const deleteRes = await request(createServer(produtoAdminHandler, { id: '1' }))
+      .delete('/')
+      .set('Cookie', adminCookie());
+    expect(deleteRes.status).toBe(405);
+  });
+});
+
 

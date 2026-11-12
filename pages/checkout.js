@@ -51,7 +51,7 @@ export default function Checkout() {
       if (!r.ok) throw new Error(data.erro || 'Não foi possível concluir o pedido.');
       limpar();
       if (!logado) recarregar(); // visitante passa a estar logado após o pedido
-      router.push(`/pedido/${data.id_pedido}?novo=1`);
+      router.push(`/pedido/${data.id_pedido}?telefone=${encodeURIComponent(dadosCliente.telefone)}&novo=1`);
     } catch (err) {
       setErro(err.message);
       setEnviando(false);

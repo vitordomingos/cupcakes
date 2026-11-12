@@ -39,6 +39,10 @@ CREATE TABLE IF NOT EXISTS item_pedido (
   subtotal       NUMERIC(10,2) NOT NULL
 );
 
+-- Soft delete de produtos: nunca usamos DELETE; "desativar" = ativo = FALSE.
+-- Idempotente (IF NOT EXISTS) e preserva todos os produtos já cadastrados (ficam ativo = TRUE).
+ALTER TABLE produto ADD COLUMN IF NOT EXISTS ativo BOOLEAN NOT NULL DEFAULT TRUE;
+
 -- Seed de produtos (somente se a tabela estiver vazia)
 INSERT INTO produto (nome, descricao, preco, quantidade_estoque)
 SELECT * FROM (VALUES

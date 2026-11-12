@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/router';
 import { isAdmin } from '../../src/lib/auth';
 import { proximoStatus, formatBRL } from '../../src/lib/config';
+import AdminProdutos from '../../src/components/AdminProdutos';
 
 // Proteção da rota no servidor: sem cookie de admin → redireciona para o login.
 export async function getServerSideProps({ req }) {
@@ -11,6 +12,7 @@ export async function getServerSideProps({ req }) {
 
 export default function PainelAdmin() {
   const router = useRouter();
+  const [aba, setAba] = useState('pedidos');
   const [pedidos, setPedidos] = useState([]);
   const [erro, setErro] = useState('');
 
@@ -51,33 +53,57 @@ export default function PainelAdmin() {
 
   return (
     <>
-      <h1>Gestão de Pedidos <button className="sec" onClick={sair}>Sair</button></h1>
-      {erro && <p className="erro">{erro}</p>}
-      {!pedidos.length ? <p>Nenhum pedido ainda.</p> : (
-        <table>
-          <thead>
-            <tr><th>#</th><th>Data/Hora</th><th>Cliente</th><th>Itens</th><th>Total</th><th>Pagamento</th><th>Status</th><th>Ação</th></tr>
-          </thead>
-          <tbody>
-            {pedidos.map((p) => {
-              const prox = proximoStatus(p.status);
-              return (
-                <tr key={p.id_pedido}>
-                  <td>{p.id_pedido}</td>
-                  <td>{new Date(p.data_hora).toLocaleString('pt-BR')}</td>
-                  <td>{p.cliente_nome}<br /><small>{p.telefone}<br />{p.endereco}</small></td>
-                  <td>{p.itens.map((i) => <div key={i.id_item}>{i.quantidade}x {i.nome}</div>)}</td>
-                  <td>{formatBRL(p.valor_total)}</td>
-                  <td className="pag">{p.forma_pagamento === 'Cartão na entrega' ? '💳 ' : '📱 '}{p.forma_pagamento}</td>
-                  <td><span className="status">{p.status}</span></td>
-                  <td>{prox ? <button onClick={() => avancar(p)}>→ {prox}</button> : '✔'}</td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+      <h1>Painel Administrativo <button className="sec" onClick={sair}>Sair</button></h1>
+
+      <div style={{ display: 'flex', gap: 10, marginBottom: 20 }}>
+        <button
+          type="button"
+          className={aba === 'pedidos' ? '' : 'sec'}
+          onClick={() => setAba('pedidos')}
+        >
+          Gestão de Pedidos
+        </button>
+        <button
+          type="button"
+          className={aba === 'produtos' ? '' : 'sec'}
+          onClick={() => setAba('produtos')}
+        >
+          Gestão de Produtos
+        </button>
+      </div>
+
+      {aba === 'produtos' ? (
+        <AdminProdutos />
+      ) : (
+        <section>
+          <h2>Gestão de Pedidos</h2>
+          {erro && <p className="erro">{erro}</p>}
+          {!pedidos.length ? <p>Nenhum pedido ainda.</p> : (
+            <table>
+              <thead>
+                <tr><th>#</th><th>Data/Hora</th><th>Cliente</th><th>Itens</th><th>Total</th><th>Pagamento</th><th>Status</th><th>Ação</th></tr>
+              </thead>
+              <tbody>
+                {pedidos.map((p) => {
+                  const prox = proximoStatus(p.status);
+                  return (
+                    <tr key={p.id_pedido}>
+                      <td>{p.id_pedido}</td>
+                      <td>{new Date(p.data_hora).toLocaleString('pt-BR')}</td>
+                      <td>{p.cliente_nome}<br /><small>{p.telefone}<br />{p.endereco}</small></td>
+                      <td>{p.itens.map((i) => <div key={i.id_item}>{i.quantidade}x {i.nome}</div>)}</td>
+                      <td>{formatBRL(p.valor_total)}</td>
+                      <td className="pag">{p.forma_pagamento === 'Cartão na entrega' ? '💳 ' : '📱 '}{p.forma_pagamento}</td>
+                      <td><span className="status">{p.status}</span></td>
+                      <td>{prox ? <button onClick={() => avancar(p)}>→ {prox}</button> : '✔'}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
+        </section>
       )}
     </>
   );
 }
-
