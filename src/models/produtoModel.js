@@ -11,6 +11,16 @@ export async function listarProdutos() {
   return rows.map(mapProduto);
 }
 
+/** Consulta simples (sem lock) — usada para checar estoque na repetição de pedido. */
+export async function listarProdutosPorIds(ids) {
+  const { rows } = await query(
+    'SELECT * FROM produto WHERE id_produto = ANY($1::int[]) ORDER BY id_produto',
+    [ids]
+  );
+  return rows.map(mapProduto);
+}
+
+/** Consulta com lock (FOR UPDATE) — usar dentro de transação ao criar pedido. */
 export async function buscarProdutosPorIds(ids, client) {
   const runner = client || { query };
   const { rows } = await runner.query(

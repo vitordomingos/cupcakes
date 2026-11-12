@@ -45,6 +45,12 @@ Para inicializar só o banco: `npm run db:init`.
 | `/checkout` | Checkout (US03) — Cartão ou PIX na entrega; pedido salvo como "Recebido" |
 | `/pedido` e `/pedido/:id` | Rastreamento (US04) |
 | `/admin` | Painel admin (US05) — login em `/admin/login` com `ADMIN_PASSWORD` |
+| `/login` | Login do cliente (usuário + senha) |
+| `/conta` | Área restrita: histórico de pedidos + "Repetir Pedido" |
+| `/recuperar-senha` | Esqueci minha senha: usuário → confirmação do celular cadastrado → nova senha |
+
+> A conta do cliente é criada no primeiro pedido (checkout). Depois disso ele já fica logado.
+> Variável opcional `SESSION_SECRET` (recomendada): segredo usado para assinar a sessão do cliente e o token de redefinição de senha.
 
 ## API
 | Método | Rota | Descrição |
@@ -55,6 +61,12 @@ Para inicializar só o banco: `npm run db:init`.
 | GET | `/api/pedidos/:id` | Consulta pedido |
 | PATCH | `/api/pedidos/:id` | (admin) Avança status: Recebido → Em Preparo → Saiu para Entrega → Finalizado |
 | POST/DELETE | `/api/admin/login` | Login/logout admin |
+| POST/DELETE | `/api/clientes/login` | Login/logout do cliente |
+| GET | `/api/clientes/me` | Cliente da sessão (ou `null`) |
+| GET | `/api/clientes/pedidos` | (cliente) Histórico de pedidos |
+| POST | `/api/clientes/pedidos/:id/repetir` | (cliente) Confere estoque; 409 com `esgotados` se algum item tiver estoque ≤ 0 |
+| POST | `/api/clientes/recuperar-senha` | `{ usuario, telefone }` → token de redefinição (10 min, uso único) |
+| POST | `/api/clientes/redefinir-senha` | `{ token, nova_senha, confirmacao }` |
 
 ## Testes
 ```bash

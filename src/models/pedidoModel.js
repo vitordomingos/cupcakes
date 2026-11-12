@@ -77,6 +77,27 @@ export async function listarPedidos() {
   );
 }
 
+/** Histórico do cliente: do mais recente para o mais antigo, com itens. */
+export async function listarPedidosDoCliente(id_cliente) {
+  const { rows } = await query(
+    `SELECT * FROM pedido WHERE id_cliente = $1 ORDER BY data_hora DESC, id_pedido DESC`,
+    [id_cliente]
+  );
+  return Promise.all(
+    rows.map(async (r) => ({ ...mapPedido(r), itens: await itensDoPedido(r.id_pedido) }))
+  );
+}
+
+/** Busca um pedido somente se pertencer ao cliente informado (evita acesso a pedidos alheios). */
+export async function buscarPedidoDoCliente(id_pedido, id_cliente) {
+  const { rows } = await query('SELECT * FROM pedido WHERE id_pedido = $1 AND id_cliente = $2', [
+    id_pedido,
+    id_cliente,
+  ]);
+  if (!rows[0]) return null;
+  return { ...mapPedido(rows[0]), itens: await itensDoPedido(id_pedido) };
+}
+
 export async function atualizarStatus(id_pedido, status) {
   const { rows } = await query(
     'UPDATE pedido SET status = $1 WHERE id_pedido = $2 RETURNING *',

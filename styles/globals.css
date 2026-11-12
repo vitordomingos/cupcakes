@@ -30,4 +30,6 @@ fieldset { border: 1px solid #f1d2de; border-radius: 8px; }
 .steps span { padding: 8px 12px; border-radius: 8px; background: #eee; color: #888; }
 .steps span.ativo { background: #c2185b; color: #fff; }
 .pag { font-weight: 700; }
+label { font-weight: 600; font-size: .9rem; }
+[role="alert"] ul { margin: 6px 0 0; }
 

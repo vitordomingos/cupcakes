@@ -3,15 +3,23 @@ import * as Produto from '../models/produtoModel';
 import * as Cliente from '../models/clienteModel';
 import { HttpError, handleError, methodNotAllowed } from '../lib/http';
 import { TAXA_ENTREGA, FORMAS_PAGAMENTO, proximoStatus, STATUS } from '../lib/config';
-import { hashSenha, verificarSenha, isAdmin } from '../lib/auth';
+import { hashSenha, verificarSenha, isAdmin, getClienteId, cookieSessaoCliente } from '../lib/auth';
 
 const round2 = (n) => Math.round(n * 100) / 100;
 
-function validarCheckout(body) {
+/** Logado: exige só dados de entrega. Visitante: exige também usuário/senha (cria ou reutiliza conta). */
+function validarCheckout(body, logado) {
   const { cliente, itens, forma_pagamento } = body || {};
-  const campos = ['nome', 'telefone', 'usuario', 'senha', 'endereco'];
+  const campos = logado
+    ? ['nome', 'telefone', 'endereco']
+    : ['nome', 'telefone', 'usuario', 'senha', 'endereco'];
   if (!cliente || campos.some((c) => !String(cliente[c] || '').trim())) {
-    throw new HttpError(400, 'Preencha todos os dados do cliente: nome, telefone, usuário, senha e endereço.');
+    throw new HttpError(
+      400,
+      logado
+        ? 'Preencha nome, telefone e endereço de entrega.'
+        : 'Preencha todos os dados do cliente: nome, telefone, usuário, senha e endereço.'
+    );
   }
   if (!FORMAS_PAGAMENTO.some((f) => f.valor === forma_pagamento)) {
     throw new HttpError(400, 'Forma de pagamento inválida. Escolha Cartão ou PIX na entrega.');
@@ -27,9 +35,13 @@ function validarCheckout(body) {
   return { cliente, itens, forma_pagamento };
 }
 
-/** Regra de negócio de criação de pedido (US03). Preços são sempre recalculados no servidor. */
-export async function criarPedido(body) {
-  const { cliente, itens, forma_pagamento } = validarCheckout(body);
+/**
+ * Regra de negócio de criação de pedido (US03). Preços são sempre recalculados no servidor.
+ * @param {object} body
+ * @param {number|null} idSessao id_cliente do cliente logado (o pedido é atrelado a ele).
+ */
+export async function criarPedido(body, idSessao = null) {
+  const { cliente, itens, forma_pagamento } = validarCheckout(body, Boolean(idSessao));
 
   // Agrupa quantidades do mesmo produto
   const qtd = new Map();
@@ -39,19 +51,27 @@ export async function criarPedido(body) {
   }
 
   return Pedido.transacao(async (client) => {
-    // Cliente: reutiliza pelo usuário (com senha) ou cria um novo
-    let cli = await Cliente.buscarPorUsuario(cliente.usuario.trim(), client);
-    if (cli) {
-      if (!verificarSenha(cliente.senha, cli.senha)) {
-        throw new HttpError(401, 'Usuário já existe e a senha informada não confere.');
-      }
-      await Cliente.atualizarContato(client, cli.id_cliente, cliente);
+    let cli;
+    if (idSessao) {
+      // Cliente logado: atualiza dados de entrega do próprio cadastro
+      const existe = await Cliente.atualizarContato(client, idSessao, cliente);
+      if (!existe) throw new HttpError(401, 'Sessão inválida. Faça login novamente.');
+      cli = { id_cliente: idSessao };
     } else {
-      cli = await Cliente.criarCliente(client, {
-        ...cliente,
-        usuario: cliente.usuario.trim(),
-        senha: hashSenha(cliente.senha),
-      });
+      // Visitante: reutiliza pelo usuário (com senha) ou cria um novo
+      cli = await Cliente.buscarPorUsuario(cliente.usuario.trim(), client);
+      if (cli) {
+        if (!verificarSenha(cliente.senha, cli.senha)) {
+          throw new HttpError(401, 'Usuário já existe e a senha informada não confere.');
+        }
+        await Cliente.atualizarContato(client, cli.id_cliente, cliente);
+      } else {
+        cli = await Cliente.criarCliente(client, {
+          ...cliente,
+          usuario: cliente.usuario.trim(),
+          senha: hashSenha(cliente.senha),
+        });
+      }
     }
 
     const produtos = await Produto.buscarProdutosPorIds([...qtd.keys()], client);
@@ -86,7 +106,10 @@ export async function criarPedido(body) {
 export async function pedidosHandler(req, res) {
   try {
     if (req.method === 'POST') {
-      const pedido = await criarPedido(req.body);
+      const idSessao = getClienteId(req);
+      const pedido = await criarPedido(req.body, idSessao);
+      // Visitante que comprou passa a ficar logado na própria conta
+      if (!idSessao) res.setHeader('Set-Cookie', cookieSessaoCliente(pedido.id_cliente));
       return res.status(201).json(pedido);
     }
     if (req.method === 'GET') {

@@ -54,11 +54,42 @@ export function CartProvider({ children }) {
     const remover = (id) => setItens((atual) => atual.filter((i) => i.id_produto !== id));
     const limpar = () => setItens([]);
 
+    /**
+     * Adiciona vários itens de uma vez (Repetir Pedido).
+     * Recebe [{ id_produto, nome, preco, quantidade_estoque, quantidade }] já validados pelo servidor;
+     * soma com o que já está no carrinho, sem ultrapassar o estoque atual.
+     */
+    const adicionarItens = (novos) =>
+      setItens((atual) => {
+        const resultado = [...atual];
+        for (const n of novos) {
+          const idx = resultado.findIndex((i) => i.id_produto === n.id_produto);
+          if (idx >= 0) {
+            const ex = resultado[idx];
+            resultado[idx] = {
+              ...ex,
+              preco: n.preco,
+              estoque: n.quantidade_estoque,
+              quantidade: Math.min(ex.quantidade + n.quantidade, n.quantidade_estoque),
+            };
+          } else {
+            resultado.push({
+              id_produto: n.id_produto,
+              nome: n.nome,
+              preco: n.preco,
+              estoque: n.quantidade_estoque,
+              quantidade: Math.min(n.quantidade, n.quantidade_estoque),
+            });
+          }
+        }
+        return resultado.filter((i) => i.quantidade > 0);
+      });
+
     const totalItens = itens.reduce((s, i) => s + i.quantidade, 0);
     const subtotal = itens.reduce((s, i) => s + i.preco * i.quantidade, 0);
     const taxa = itens.length ? TAXA_ENTREGA : 0;
 
-    return { itens, adicionar, alterarQuantidade, remover, limpar, totalItens, subtotal, taxa, total: subtotal + taxa };
+    return { itens, adicionar, adicionarItens, alterarQuantidade, remover, limpar, totalItens, subtotal, taxa, total: subtotal + taxa };
   }, [itens]);
 
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>;
